@@ -1,5 +1,7 @@
 # 🏠 Housing Price Predictor — Linear Regression
 
+**🚀 Live app: https://suzan-housing-price.streamlit.app/**
+
 A Streamlit web app that prices apartments using a **linear regression** model trained on `Project housing data .csv` (2,999 sold apartments). Machine-learning exercise, part A.
 
 ## Method
