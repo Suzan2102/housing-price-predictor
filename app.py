@@ -73,28 +73,39 @@ with tab_pred:
 
 # ---------------- Evaluation ----------------
 with tab_eval:
-    st.subheader("מדדי טיב המודל")
-    st.write("המדדים העיקריים מחושבים על **נתוני הבדיקה (20%)** — דירות שהמודל לא ראה באימון.")
-    m = pd.DataFrame({"אימון (80%)": res["train_metrics"], "בדיקה (20%)": res["test_metrics"]}).T
-    t = res["test_metrics"]
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("R² (בדיקה)", f"{t['R2']:.3f}")
-    k2.metric("MAE (בדיקה)", f"${t['MAE']:,.0f}")
-    k3.metric("RMSE (בדיקה)", f"${t['RMSE']:,.0f}")
-    k4.metric("MAPE (בדיקה)", f"{t['MAPE']:.1f}%")
-    st.dataframe(m.style.format({"R2": "{:.3f}", "MAE": "${:,.0f}",
-                                 "RMSE": "${:,.0f}", "MAPE": "{:.1f}%"}))
+    st.subheader("הערכת טיב המודל — R-Squared (R²)")
+    st.write("מדד ההערכה של המודל הוא **R²**, והוא מחושב על **נתוני הבדיקה (20%)** — "
+             "דירות שהמודל לא ראה באימון.")
+    t, tr_m = res["test_metrics"], res["train_metrics"]
+    k1, k2, k3 = st.columns(3)
+    k1.metric("R² — נתוני בדיקה (20%)", f"{t['R2']:.3f}",
+              delta=f"{t['R2'] - tr_m['R2']:+.3f} לעומת אימון", delta_color="off")
+    k2.metric("R² — נתוני אימון (80%)", f"{tr_m['R2']:.3f}")
+    k3.metric("R² מתוקנן (Adjusted) — בדיקה", f"{t['Adj_R2']:.3f}")
+    st.progress(max(min(t["R2"], 1.0), 0.0),
+                text=f"המודל מסביר {t['R2']:.1%} מהשונות במחירי הדירות בנתוני הבדיקה")
+
+    st.latex(r"R^2 = 1 - \frac{\sum_i (y_i - \hat{y}_i)^2}{\sum_i (y_i - \bar{y})^2}")
     st.markdown(
-        "- **R²** — חלק השונות במחיר שהמודל מסביר.\n"
-        "- **MAE** — השגיאה הממוצעת בדולרים.\n"
-        "- **RMSE** — שגיאה שמענישה יותר טעויות גדולות.\n"
-        "- **MAPE** — השגיאה הממוצעת באחוזים ממחיר הדירה.\n\n"
-        "הפער הקטן בין אימון לבדיקה מעיד שאין התאמת-יתר (overfitting) משמעותית.")
+        f"- **מה המדד אומר:** R² מודד איזה חלק מהשונות במחיר הדירות מוסבר על ידי המודל. "
+        f"1 = חיזוי מושלם, 0 = המודל לא טוב יותר מניחוש המחיר הממוצע.\n"
+        f"- **התוצאה:** R² = **{t['R2']:.3f}** על נתוני הבדיקה — המודל מסביר כ-"
+        f"{t['R2']:.0%} מהשונות במחיר. זהו כוח הסבר בינוני-טוב עבור מודל לינארי פשוט "
+        f"ללא משתני מיקום.\n"
+        f"- **אימון מול בדיקה:** {tr_m['R2']:.3f} באימון לעומת {t['R2']:.3f} בבדיקה — "
+        f"ירידה קטנה, כלומר אין התאמת-יתר (overfitting) משמעותית והמודל מכליל לדירות חדשות.\n"
+        f"- **R² מתוקנן ({t['Adj_R2']:.3f}):** מתקן את R² לפי מספר המשתנים במודל "
+        f"({len(res['columns'])}), כך שהוספת משתנים לא-רלוונטיים לא תנפח את המדד.")
+
+    with st.expander("מדדים משלימים (MAE, RMSE, MAPE)"):
+        m = pd.DataFrame({"אימון (80%)": tr_m, "בדיקה (20%)": t}).T
+        st.dataframe(m.style.format({"R2": "{:.3f}", "Adj_R2": "{:.3f}", "MAE": "${:,.0f}",
+                                     "RMSE": "${:,.0f}", "MAPE": "{:.1f}%"}))
 
     tr = res["test_results"]
     fig = px.scatter(tr, x="actual", y="predicted", opacity=0.6,
                      labels={"actual": "מחיר בפועל", "predicted": "מחיר חזוי"},
-                     title="מחיר חזוי מול מחיר בפועל — נתוני בדיקה")
+                     title=f"מחיר חזוי מול מחיר בפועל — נתוני בדיקה (R² = {t['R2']:.3f})")
     lim = [0, max(tr.actual.max(), tr.predicted.max())]
     fig.add_scatter(x=lim, y=lim, mode="lines", name="חיזוי מושלם",
                     line=dict(dash="dash", color="gray"))

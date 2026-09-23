@@ -10,13 +10,17 @@ A Streamlit web app that prices apartments using a **linear regression** model t
   - `sqft_above` is dropped because `sqft_living = sqft_above + sqft_basement` exactly (perfect multicollinearity)
 - **Model:** `sklearn.linear_model.LinearRegression`
 
-## Results (test set, 20%)
-| Metric | Train | Test |
+## Model evaluation — R-Squared (R²)
+The model is evaluated with **R²** on the 20% test set (apartments not seen during training).
+
+| | Train (80%) | **Test (20%)** |
 |---|---|---|
-| R² | 0.649 | 0.584 |
-| MAE | $154,316 | $148,055 |
-| RMSE | $233,499 | $204,654 |
-| MAPE | 32.3% | 32.3% |
+| **R²** | 0.649 | **0.584** |
+| Adjusted R² | 0.647 | 0.573 |
+
+- The model explains **~58%** of the variance in apartment prices on unseen data.
+- The small drop from train (0.649) to test (0.584) means there is no significant overfitting.
+- Supplementary test metrics: MAE $148,055 · RMSE $204,654 · MAPE 32.3%.
 
 ## Prediction example
 A new apartment: 3 bedrooms, 2 bathrooms, 1,800 sqft living (1,400 above + 400 basement), 6,000 sqft lot, 1 floor, no waterfront, view 0, condition 3, built 1985.

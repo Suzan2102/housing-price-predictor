@@ -45,9 +45,14 @@ def train(df):
     pred_train = model.predict(X_train)
     pred_test = model.predict(X_test)
 
+    n_features = X.shape[1]
+
     def metrics(y_true, y_pred):
+        r2 = r2_score(y_true, y_pred)
+        n = len(y_true)
         return {
-            "R2": r2_score(y_true, y_pred),
+            "R2": r2,
+            "Adj_R2": 1 - (1 - r2) * (n - 1) / (n - n_features - 1),
             "MAE": mean_absolute_error(y_true, y_pred),
             "RMSE": float(np.sqrt(mean_squared_error(y_true, y_pred))),
             "MAPE": float(np.mean(np.abs((y_true - y_pred) / y_true)) * 100),
