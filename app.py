@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from model import CATEGORICAL, NUMERIC, encode, load_data, predict, train
+from model import ENGINEERED, NUMERIC, encode, engineer, load_data, predict, r2_over_splits, train
 
 st.set_page_config(page_title="תמחור דירות", page_icon="🏠", layout="wide")
 st.markdown("<style>body, .stMarkdown, .stTabs {direction: rtl; text-align: right;}</style>",
@@ -16,12 +16,18 @@ def get_data():
 
 
 @st.cache_resource
-def get_model():
-    return train(get_data())
+def get_models():
+    df = get_data()
+    return train(df, "baseline"), train(df, "improved")
+
+
+@st.cache_data
+def get_splits():
+    return r2_over_splits(get_data())
 
 
 df = get_data()
-res = get_model()
+base, res = get_models()
 
 st.title("🏠 מערכת תמחור דירות — רגרסיה לינארית")
 st.caption(f"{len(df):,} דירות · אימון על 80% ({res['n_train']:,}) · בדיקה על 20% ({res['n_test']:,})")
@@ -97,6 +103,30 @@ with tab_eval:
         f"- **R² מתוקנן ({t['Adj_R2']:.3f}):** מתקן את R² לפי מספר המשתנים במודל "
         f"({len(res['columns'])}), כך שהוספת משתנים לא-רלוונטיים לא תנפח את המדד.")
 
+    st.subheader("שיפור R²: מודל בסיס מול מודל משופר")
+    b = base["test_metrics"]
+    c1, c2, c3 = st.columns(3)
+    c1.metric("R² מודל בסיס (בדיקה)", f"{b['R2']:.3f}")
+    c2.metric("R² מודל משופר (בדיקה)", f"{t['R2']:.3f}", delta=f"{t['R2'] - b['R2']:+.3f}")
+    splits = get_splits()
+    c3.metric("R² ממוצע על 30 חלוקות 80/20", f"{splits.improved.mean():.3f}",
+              delta=f"{splits.improved.mean() - splits.baseline.mean():+.3f} לעומת בסיס")
+    st.markdown(
+        "שני המודלים הם **רגרסיה לינארית (OLS)**. השיפור מגיע מהנדסת משתנים:\n"
+        "- **חיזוי √מחיר** במקום מחיר: התפלגות המחירים מוטה מאוד ימינה (עד $5.35M), "
+        "והשורש מקטין את השפעת הדירות היקרות על הקו. התחזית מוחזרת לדולרים לפני חישוב R².\n"
+        "- **לוגריתם של השטחים**, **גיל הבית וגיל²**, **חדרים²**.\n"
+        "- **אינטראקציות**: שטח×נוף, שטח×מצב, שטח×חוף מים, גיל×מצב.")
+    fig_s = px.line(splits, x="split", y=["baseline", "improved"], markers=True,
+                    labels={"value": "R² בדיקה", "split": "חלוקה אקראית (random_state)",
+                            "variable": "מודל"},
+                    title=f"R² על 30 חלוקות שונות: המודל המשופר טוב יותר ב-"
+                          f"{(splits.improved > splits.baseline).sum()}/30")
+    st.plotly_chart(fig_s, width="stretch")
+    st.info("**למה R² לא גבוה יותר?** בנתונים אין משתנה מיקום (שכונה/מיקוד). "
+            "מיקום הוא הגורם החזק ביותר במחיר דירה: שתי דירות זהות בשכונות שונות יכולות "
+            "להיות שונות פי 2–3 במחיר, וזה החלק שאף מודל על המשתנים האלה לא יכול להסביר.")
+
     with st.expander("מדדים משלימים (MAE, RMSE, MAPE)"):
         m = pd.DataFrame({"אימון (80%)": tr_m, "בדיקה (20%)": t}).T
         st.dataframe(m.style.format({"R2": "{:.3f}", "Adj_R2": "{:.3f}", "MAE": "${:,.0f}",
@@ -128,18 +158,21 @@ with tab_model:
         f"- **sqft_above** — הוסר, כי `sqft_living = sqft_above + sqft_basement` בדיוק "
         f"(מולטיקוליניאריות מושלמת).\n"
         f"- משתנים מספריים: {', '.join(NUMERIC)}.")
-    st.write("דוגמה — 5 השורות הראשונות אחרי קידוד:")
-    st.dataframe(encode(df.head()))
+    st.subheader("הנדסת משתנים (מודל משופר)")
+    st.dataframe(pd.Series(ENGINEERED, name="הסבר").rename_axis("משתנה"), width="stretch")
+    st.write("דוגמה: 5 השורות הראשונות אחרי קידוד והנדסת משתנים:")
+    st.dataframe(engineer(df.head()))
 
-    st.subheader("מקדמי הרגרסיה")
+    st.subheader("מקדמי הרגרסיה (מודל משופר, יחידות √$)")
     st.write(f"חותך (intercept): **{res['intercept']:,.0f}**")
     coef = res["coefficients"].rename("מקדם").to_frame()
     st.dataframe(coef.style.format("{:,.1f}"))
     st.plotly_chart(px.bar(coef.reset_index(), x="מקדם", y="index", orientation="h",
-                           labels={"index": "משתנה"}, title="השפעת כל משתנה על המחיר ($)"),
+                           labels={"index": "משתנה"}, title="מקדמי המודל (המשתנה החזוי: √מחיר)"),
                     width="stretch")
-    st.caption("מקדם של משתנה דמי (למשל view_4) = תוספת המחיר לעומת קטגוריית הבסיס, "
-               "כשכל שאר המשתנים קבועים.")
+    st.caption("המקדמים הם ביחידות √מחיר, והמשתנים מתואמים ביניהם (למשל שטח ושטח²), "
+               "לכן אין לפרש מקדם בודד כהשפעה בדולרים. להשפעה ישירה בדולרים ראו את מודל הבסיס:")
+    st.dataframe(base["coefficients"].rename("מקדם ($)").to_frame().style.format("{:,.1f}"))
 
 # ---------------- Data ----------------
 with tab_data:
